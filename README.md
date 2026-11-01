@@ -4,6 +4,8 @@
 
 Windows 10/11 · PowerShell 5.1+ · Experimental
 
+[下载最新实验版](https://github.com/LXMH1982/Codex-hanhua-fangan/releases/latest)
+
 > 这是一个非官方实验性项目，与 OpenAI 没有关联。
 >
 > 本项目不提供修改版 ChatGPT，不替换安装目录，也不会上传聊天记录或账号信息。
@@ -15,7 +17,7 @@ Windows 10/11 · PowerShell 5.1+ · Experimental
 
 不需要阅读代码、修改配置或手动填写安装路径：
 
-1. 下载或克隆本仓库，并解压到一个固定文件夹。
+1. [下载最新实验版](https://github.com/LXMH1982/Codex-hanhua-fangan/releases/latest)，并解压到一个固定文件夹。
 2. 先在能够正常访问 ChatGPT 的网络环境中成功打开一次客户端。
 3. 关闭已经打开的 ChatGPT。
 4. 双击 `Start-ChatGPT-zh-CN.cmd`。
