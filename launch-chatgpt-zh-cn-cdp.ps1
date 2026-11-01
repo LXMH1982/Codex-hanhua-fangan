@@ -11,11 +11,27 @@ function Write-PatchLog([string]$Message) {
 }
 
 function Find-ChatGptExecutable {
-    $package = Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue |
+    $packages = @(Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue |
         Sort-Object Version -Descending |
-        Select-Object -First 1
-    if ($null -ne $package) {
+        Select-Object -First 10)
+    foreach ($package in $packages) {
         $candidate = Join-Path $package.InstallLocation "app\ChatGPT.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            $script:ChatGptPackage = $package
+            return $candidate
+        }
+    }
+
+    $installedDirectory = Get-ChildItem -LiteralPath "C:\Program Files\WindowsApps" -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "OpenAI.Codex_*" } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if ($null -ne $installedDirectory) {
+        $nameParts = $installedDirectory.Name.Split("_")
+        if ($nameParts.Count -ge 2) {
+            $script:ChatGptPackageFamilyName = "$($nameParts[0])_$($nameParts[-1])"
+        }
+        $candidate = Join-Path $installedDirectory.FullName "app\ChatGPT.exe"
         if (Test-Path -LiteralPath $candidate) { return $candidate }
     }
 
@@ -27,21 +43,36 @@ function Find-ChatGptExecutable {
         Select-Object -First 1
     if ($null -ne $candidate) { return $candidate }
 
-    throw "ChatGPT executable was not found."
+    throw "ChatGPT was not found. Install the official Windows desktop app and try again."
 }
 
 function Find-ChatGptUserData {
-    $candidates = @(
-        (Join-Path $env:APPDATA "Codex\web\Codex"),
-        (Join-Path $env:LOCALAPPDATA "Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Roaming\Codex\web\Codex")
-    )
+    $candidates = @()
+
+    if ($null -ne $script:ChatGptPackage -and
+        -not [string]::IsNullOrWhiteSpace($script:ChatGptPackage.PackageFamilyName)) {
+        $candidates += Join-Path $env:LOCALAPPDATA "Packages\$($script:ChatGptPackage.PackageFamilyName)\LocalCache\Roaming\Codex\web\Codex"
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($script:ChatGptPackageFamilyName)) {
+        $candidates += Join-Path $env:LOCALAPPDATA "Packages\$($script:ChatGptPackageFamilyName)\LocalCache\Roaming\Codex\web\Codex"
+    }
+
+    $packageRoots = Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA "Packages") -Directory -Filter "OpenAI.Codex_*" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending
+    foreach ($packageRoot in $packageRoots) {
+        $candidates += Join-Path $packageRoot.FullName "LocalCache\Roaming\Codex\web\Codex"
+    }
+
+    $candidates += Join-Path $env:APPDATA "Codex\web\Codex"
+    $candidates += Join-Path $env:LOCALAPPDATA "Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Roaming\Codex\web\Codex"
+
     foreach ($candidate in ($candidates | Select-Object -Unique)) {
         try {
             if (Test-Path -LiteralPath $candidate -ErrorAction Stop) { return $candidate }
         }
         catch {}
     }
-    throw "ChatGPT user-data directory was not found."
+    throw "ChatGPT user data was not found. Launch ChatGPT normally once, then try again."
 }
 
 function Send-WsText($Socket, [string]$Text) {
@@ -56,7 +87,7 @@ function Receive-WsText($Socket) {
     do {
         $result = $Socket.ReceiveAsync([ArraySegment[byte]]::new($buffer), [Threading.CancellationToken]::None).GetAwaiter().GetResult()
         if ($result.MessageType -eq [Net.WebSockets.WebSocketMessageType]::Close) {
-            throw "DevTools WebSocket closed."
+            throw "ChatGPT closed the local debugging connection."
         }
         $stream.Write($buffer, 0, $result.Count)
     } while (-not $result.EndOfMessage)
@@ -87,7 +118,7 @@ if (Get-Process -Name "ChatGPT" -ErrorAction SilentlyContinue) {
     }
 
     if ($null -ne (Get-Process -Name "ChatGPT" -ErrorAction SilentlyContinue)) {
-        throw "ChatGPT could not be stopped before applying the language patch."
+        throw "ChatGPT could not be stopped. Close it manually and try again."
     }
 }
 
@@ -125,7 +156,7 @@ for ($attempt = 0; $attempt -lt 90; $attempt++) {
 
 if ($null -eq $target) {
     Write-PatchLog "DevTools target not found."
-    throw "ChatGPT started without a reachable DevTools target. See $logPath"
+    throw "ChatGPT started without a reachable debugging target. See $logPath"
 }
 
 Write-PatchLog "target=$($target.url)"
@@ -209,7 +240,7 @@ try {
     }
 
     if (-not $ready) {
-        throw "Statsig client was not available in the renderer."
+        throw "The ChatGPT language feature did not finish loading. Check the network and try again."
     }
 
     $patchResult = Invoke-Cdp "Runtime.evaluate" @{
